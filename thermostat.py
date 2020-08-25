@@ -4,19 +4,48 @@ import requests
 import time
 from w1thermsensor import W1ThermSensor
 
+import logging
+import logging.handlers
+logger = logging.getLogger("thermostat")
+logger.setLevel(logging.DEBUG)
+
+#add console handler for logger
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+logger.addHandler(ch)
+
+#add file handler for logger
+fh = logging.FileHandler('log.csv')
+logger.addHandler(fh)
+
 sensor = W1ThermSensor()
 
 # Create an ordered list of start times with thermostat setpoint temperatures
 schedule = [
     {
-        "time": "5:00",
-        "on": 75,
-        "off": 73
+        "time": "2:30",
+        "on": 83,
+        "off": 78
+    },
+    {
+        "time": "4:30",
+        "on": 83,
+        "off": 78
+    },
+    {
+        "time": "7:00",
+        "on": 95,
+        "off": 83
+    },
+    { #basically unmanaged time
+        "time": "8:00",
+        "on": 95,
+        "off": 69
     },
     {
         "time": "18:00",
-        "on": 73,
-        "off": 71
+        "on": 82,
+        "off": 77
     }
 ]
 
@@ -57,38 +86,41 @@ def build_ranges():
     })
     return ranges
 
-def get_current_range():
+def get_current_range(now):
     '''
     Find out the on and off setpoint temperatures are for the current datetime
     '''
-    now = datetime.datetime.now()
     schedule = build_ranges()
     current = schedule[0] #will check against this twice
     for entry in schedule:
         if current["dt"] <= now < entry["dt"]:
-            print("found")
             return current
         current = entry
 
 def begin_cool():
-    print("turning on AC")
+    #print(f"https://maker.ifttt.com/trigger/master_ac_on/with/key/{os.getenv('IFTTT_KEY')}")
     requests.post(f"https://maker.ifttt.com/trigger/master_ac_on/with/key/{os.getenv('IFTTT_KEY')}")
 
 
 def end_cool():
-    print("turning off AC")
+    #print(f"https://maker.ifttt.com/trigger/master_ac_off/with/key/{os.getenv('IFTTT_KEY')}")
     requests.post(f"https://maker.ifttt.com/trigger/master_ac_off/with/key/{os.getenv('IFTTT_KEY')}")
 
 def update():
     temp = sensor.get_temperature(W1ThermSensor.DEGREES_F)
-    print("The temperature is %s f" % temp)
-    r = get_current_range()
-    print(f'on: {r["on"]}, off: {r["off"]}, starttime: {r["dt"].strftime("%Y/%m/%d %H:%M")}')
+    now = datetime.datetime.now()
+    r = get_current_range(now)
     if temp < r["off"]:
+        action = "off"
         end_cool()
-    if temp > r["on"]:
+    elif temp > r["on"]:
+        action = "on"
         begin_cool()
+    else:
+        action = "none"
+    logger.debug(f'{now.strftime("%Y/%m/%d %H:%M")}, {temp}, {r["on"]}, {r["off"]}, {action}')
 
+logger.debug(f'time,temp,on,off,action')
 while True:
     update()
-    time.sleep(60)
+    time.sleep(30)
